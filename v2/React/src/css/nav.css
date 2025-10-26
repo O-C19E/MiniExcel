@@ -1,5 +1,6 @@
 #navbar {
   display: flex;
+  justify-content: space-between;
   gap: 0.5rem;
   background-color: #1e1e1e; /* modern dark color */
   padding: 0.5rem 1rem;

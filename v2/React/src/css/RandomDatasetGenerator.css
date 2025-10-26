@@ -44,17 +44,12 @@ input[type="number"] {
   padding: 12px;
   border: none;
   border-radius: 8px;
-  background: linear-gradient(90deg, #4b6cb7, #182848);
+  background: linear-gradient(90deg, #5563DE, #5563DE);
   color: white;
   font-size: 16px;
   font-weight: 600;
   cursor: pointer;
   transition: transform 0.2s, box-shadow 0.2s;
-}
-
-.generate-btn:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
 }
 
 .generate-btn:disabled {

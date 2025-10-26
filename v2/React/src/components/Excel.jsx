@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
-import NavChild from "./NavChild.jsx";
+import NavChild from "../pages/NavChild.jsx";
+import Styler from "../pages/Styler.jsx"
 import "../css/excel.css";
 
 const DEFAULT_VISIBLE_ROWS = 25;
@@ -23,6 +24,8 @@ const COLUMN_HEADERS = (numCols) => {
   return headers;
 };
 
+const getVal = (cell) => (typeof cell === "object" ? cell.value : cell);
+
 const Cell = React.memo(function Cell({
   cellKey,
   value,
@@ -30,6 +33,8 @@ const Cell = React.memo(function Cell({
   onStartEdit,
   onSave,
   highlight,
+  highlightedCell,
+  setHighlightedCell,
   onNavigate,
   onMouseDown,
   onMouseEnter,
@@ -41,43 +46,59 @@ const Cell = React.memo(function Cell({
   }, [isEditing]);
 
   return (
-    <div
-      className={`cell ${highlight ? "cell-highlight" : ""}`}
-      onClick={() => onStartEdit(cellKey)}
-      onMouseDown={() => onMouseDown?.(cellKey)}
-      onMouseEnter={() => onMouseEnter?.(cellKey)}
-      tabIndex={0}
-      onKeyDown={(e) => onNavigate(e, cellKey)}
-      role="gridcell"
-      aria-label={cellKey}
-    >
-      {isEditing ? (
-        <input
-          ref={inputRef}
-          defaultValue={value || ""}
-          onBlur={(e) => onSave(cellKey, e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") onSave(cellKey, e.target.value, undefined, true);
-            if (e.key === "Tab") {
-              e.preventDefault();
-              onSave(cellKey, e.target.value, "tab", true);
-            }
-            if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) {
-              e.preventDefault();
-              onNavigate(e, cellKey);
-            }
-          }}
-          className="cell-input"
-        />
-      ) : (
-        <div className="cell-value">{value || ""}</div>
-      )}
-    </div>
+  <div
+    className={`cell ${highlight ? "cell-highlight" : ""} ${
+      cellKey === highlightedCell ? "cell-highlight-green" : ""
+    }`}
+    onClick={() => {
+      onStartEdit(cellKey);
+      setHighlightedCell(null);
+    }}
+    onMouseDown={() => onMouseDown?.(cellKey)}
+    onMouseEnter={() => onMouseEnter?.(cellKey)}
+    tabIndex={0}
+    onKeyDown={(e) => onNavigate(e, cellKey)}
+    role="gridcell"
+    aria-label={cellKey}
+    style={{
+      fontFamily: value?.style?.fontFamily || "Calibri",
+      fontSize: value?.style?.fontSize || 14,
+      textAlign: value?.style?.textAlign || "left",
+    }}
+  >
+    {isEditing ? (
+      <input
+        ref={inputRef}
+        defaultValue={value?.value || ""}
+        onBlur={(e) => onSave(cellKey, e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") onSave(cellKey, e.target.value, undefined, true);
+          if (e.key === "Tab") {
+            e.preventDefault();
+            onSave(cellKey, e.target.value, "tab", true);
+          }
+          if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) {
+            e.preventDefault();
+            onNavigate(e, cellKey);
+          }
+        }}
+        className="cell-input"
+        style={{
+          fontFamily: value?.style?.fontFamily || "Calibri",
+          fontSize: value?.style?.fontSize || 14,
+          textAlign: value?.style?.textAlign || "left",
+        }}
+      />
+    ) : (
+      <div className="cell-value">{value?.value || ""}</div>
+    )}
+  </div>
   );
 });
 
 export default function Excel({ cells, updateCell }) {
   const containerRef = useRef(null);
+  const [selectedCells, setSelectedCells] = useState([]);
   const [formulaResult, setFormulaResult] = useState("");
   const [editing, setEditing] = useState(null);
   const [selectedRow, setSelectedRow] = useState(null);
@@ -86,6 +107,47 @@ export default function Excel({ cells, updateCell }) {
   const [numCols, setNumCols] = useState(INITIAL_COLS);
   const [selection, setSelection] = useState([]);
   const [isSelecting, setIsSelecting] = useState(false);
+  const [highlightedCell, setHighlightedCell] = useState(null);
+  const [globalStyle, setGlobalStyle] = useState({
+  fontFamily: "Calibri",
+  fontSize: 14,
+  textAlign: "left",
+});
+
+  useEffect(() => {
+  const handleClickOutside = (e) => {
+    const clickedOnIgnoredButton = e.target.closest(".ignore-focus-loss");
+    const clickedOnCell = e.target.closest(".cell");
+
+    if (!clickedOnIgnoredButton && !clickedOnCell) {
+      setSelection([]);
+      setEditing(null);
+    }
+  };
+
+  document.addEventListener("mousedown", handleClickOutside);
+  return () => document.removeEventListener("mousedown", handleClickOutside);
+}, []);
+
+  const handleStyleChange = (newStyle) => {
+  setGlobalStyle((prev) => ({ ...prev, ...newStyle }));
+
+  if (!selection.length) return; // Only apply if cells are selected
+
+  const updatedCells = { ...cells };
+  selection.forEach((key) => {
+    const cell = updatedCells[key] || { value: "", style: {} };
+    updatedCells[key] = {
+      ...cell,
+      style: { ...cell.style, ...newStyle },
+    };
+  });
+
+  localStorage.setItem("miniExcelCells_v2", JSON.stringify(updatedCells));
+  Object.keys(updatedCells).forEach((k) => updateCell(k, updatedCells[k]));
+};
+
+
   const [viewport, setViewport] = useState({
     startRow: 1,
     startCol: 1,
@@ -97,29 +159,37 @@ export default function Excel({ cells, updateCell }) {
   const getRaw = useCallback((key) => cells[key], [cells]);
 
   const computeValue = useCallback(
-    (key) => {
-      const raw = getRaw(key);
-      if (raw && typeof raw === "string" && raw.startsWith("=")) {
-        try {
-          const parser = new FormulaParser();
-          const scope = {};
-          for (let k in cells) {
-            const val = parseFloat(cells[k]);
-            scope[k] = isNaN(val) ? 0 : val;
+  (key) => {
+    const raw = (getRaw(key) && getRaw(key).value) ?? getRaw(key) ?? "";
+    if (raw && typeof raw === "string" && raw.startsWith("=")) {
+      try {
+        const parser = new FormulaParser();
+        const scope = {};
+        for (let k in cells) {
+          const cell = cells[k];
+          let val = 0;
+          if (cell == null) val = 0;
+          else if (typeof cell === "object" && "value" in cell) {
+            const parsed = parseFloat(cell.value);
+            val = isNaN(parsed) ? 0 : parsed;
+          } else {
+            const parsed = parseFloat(cell);
+            val = isNaN(parsed) ? 0 : parsed;
           }
-          parser.functions = {
-            PRINT: (value) => value,
-          };
-          const result = parser.parse(raw, { scope });
-          return result;
-        } catch (e) {
-          return "#ERR";
+          scope[k] = val;
         }
+        parser.functions = { PRINT: (value) => value };
+        const result = parser.parse(raw, { scope });
+        return result;
+      } catch (e) {
+        return "#ERR";
       }
-      return raw;
-    },
-    [getRaw, cells]
-  );
+    }
+    return raw;
+  },
+  [getRaw, cells]
+);
+
 
   const onScroll = useCallback(() => {
     const el = containerRef.current;
@@ -160,7 +230,7 @@ export default function Excel({ cells, updateCell }) {
   const onStartEdit = useCallback((cellKey) => setEditing(cellKey), []);
   const onSave = useCallback(
     (cellKey, value, nav) => {
-      updateCell(cellKey, value);
+      updateCell(cellKey, { value, style: globalStyle });
       const row = parseInt(cellKey.slice(1), 10);
       const colChar = cellKey[0];
 
@@ -236,50 +306,113 @@ export default function Excel({ cells, updateCell }) {
 
   const endSelection = () => setIsSelecting(false);
 
-  const handleOperation = (type) => {
-    if (!selection.length) return alert("Select cells first!");
+  const handleOperation = async (type) => {
+  if (!selection.length) return alert("Select cells first!");
 
-    const isSingleCol = new Set(selection.map((k) => k[0])).size === 1;
-    const isSingleRow = new Set(selection.map((k) => parseInt(k.slice(1), 10))).size === 1;
+  const sorted = [...selection].sort((a, b) => {
+    const rowA = parseInt(a.slice(1), 10);
+    const rowB = parseInt(b.slice(1), 10);
+    return rowA - rowB;
+  });
 
-    const sorted = [...selection].sort((a, b) => {
-      const rowA = parseInt(a.slice(1), 10);
-      const rowB = parseInt(b.slice(1), 10);
-      return rowA - rowB;
+  // ✅ Extract values correctly (handles both objects and plain strings)
+  const values = sorted.map((key) => {
+    const cell = cells[key];
+    const val = typeof cell === "object" ? cell.value : cell;
+    const num = parseFloat(val);
+    return isNaN(num) ? 0 : num;
+  });
+
+  try {
+    const res = await fetch("http://localhost:5000/math", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type, values }),
     });
 
-    const values = sorted.map((key) => Number(cells[key] || 0));
-    let result;
-    if (type === "sum") result = values.reduce((a, b) => a + b, 0);
-    else if (type === "average") result = values.reduce((a, b) => a + b, 0) / values.length;
+    const data = await res.json();
+    const result = data.result;
 
+    // ✅ Use the same logic for inserting result
     const newCells = { ...cells };
+    const isSingleCol = new Set(sorted.map((k) => k[0])).size === 1;
+    const isSingleRow = new Set(sorted.map((k) => parseInt(k.slice(1), 10))).size === 1;
 
     if (isSingleCol) {
       const col = sorted[0][0];
       const lastRow = Math.max(...sorted.map((k) => parseInt(k.slice(1), 10)));
       const insertRow = lastRow + 1;
+
       for (let r = numRows; r > lastRow; r--) {
         const oldKey = `${col}${r}`;
         const newKey = `${col}${r + 1}`;
         newCells[newKey] = newCells[oldKey];
       }
-      newCells[`${col}${insertRow}`] = result;
+
+      newCells[`${col}${insertRow}`] = { value: result, style: { fontWeight: "bold" } };
+      setHighlightedCell(`${col}${insertRow}`);
     } else if (isSingleRow) {
       const row = parseInt(sorted[0].slice(1), 10);
       const lastColCode = Math.max(...sorted.map((k) => k[0].charCodeAt(0)));
       const insertColCode = lastColCode + 1;
+
       for (let c = numCols; c > lastColCode - 64; c--) {
         const oldKey = `${String.fromCharCode(c + 64)}${row}`;
         const newKey = `${String.fromCharCode(c + 65)}${row}`;
         newCells[newKey] = newCells[oldKey];
       }
-      newCells[`${String.fromCharCode(insertColCode)}${row}`] = result;
+
+      newCells[`${String.fromCharCode(insertColCode)}${row}`] = { value: result, style: { fontWeight: "bold" } };
     }
 
     updateCellBatch(newCells);
     setSelection([]);
-  };
+  } catch (err) {
+    console.error("Math operation failed:", err);
+    alert("Failed to perform operation. See console for details.");
+  }
+};
+
+
+const handleSort = (order) => {
+  if (!selection.length) {
+    alert("Select a column or row to sort!");
+    return;
+  }
+
+  const sorted = [...selection].sort((a, b) => {
+    const rowA = parseInt(a.slice(1), 10);
+    const rowB = parseInt(b.slice(1), 10);
+    return rowA - rowB;
+  });
+
+  // Extract current values
+  const values = sorted.map((key) => getVal(cells[key]));
+
+  // Sort values (alphabetical or numeric)
+  const sortedValues = values.sort((a, b) => {
+    const numA = parseFloat(a);
+    const numB = parseFloat(b);
+    if (!isNaN(numA) && !isNaN(numB)) {
+      return order === "asc" ? numA - numB : numB - numA;
+    }
+    return order === "asc"
+      ? String(a).localeCompare(String(b))
+      : String(b).localeCompare(String(a));
+  });
+
+  // ✅ Apply sorted values back while preserving styles
+  const newCells = { ...cells };
+  sorted.forEach((key, i) => {
+    const existing = cells[key] || {};
+    newCells[key] = {
+      ...existing,
+      value: sortedValues[i],
+    };
+  });
+
+  updateCellBatch(newCells);
+};
 
   /** Updated executeCondition */
 const executeCondition = async (formula, cells) => {
@@ -316,20 +449,21 @@ const executeCondition = async (formula, cells) => {
       onMouseLeave={endSelection}
       tabIndex={0}
       onKeyDown={(e) => {
-        if (e.key === "Escape") setSelection([]);
+        if (e.key === "Escape"){ setSelection([]); setHighlightedCell(null);}
       }}
     >
       <NavChild
         onOperation={handleOperation}
         cells={cells}
         onExecuteCondition={(code, cells, targetCell) => executeCondition(code, cells, targetCell)}
+        onSort={handleSort}
       />
 
-      <div style={{ marginTop: "10px", fontSize: "20px" }}>
+      <div style={{ marginTop: "10px", fontSize: "20px", marginBottom: "10px"}}>
         <em>Result:</em> <em style={{fontFamily: "monospace", fontSize: "20px", fontStyle: "normal"}}>{formulaResult}</em>
-        <hr/>
       </div>
-
+      <Styler onStyleChange={handleStyleChange} />
+      <div style={{marginBottom: "15px"}}></div>
       <div className="grid-container" ref={containerRef} role="application">
         <div
           className="grid-table"
@@ -396,11 +530,13 @@ const executeCondition = async (formula, cells) => {
                     >
                       <Cell
                         cellKey={key}
-                        value={isEditing ? raw : display}
+                        value={cells[key]}
                         isEditing={isEditing}
                         onStartEdit={onStartEdit}
                         onSave={onSave}
                         highlight={highlight}
+                        highlightedCell={highlightedCell}          // <-- add this
+                        setHighlightedCell={setHighlightedCell}    
                         onNavigate={onNavigate}
                         onMouseDown={startSelection}
                         onMouseEnter={extendSelection}

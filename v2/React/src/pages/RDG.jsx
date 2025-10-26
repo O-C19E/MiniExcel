@@ -1,7 +1,7 @@
 import React, { useEffect } from "react";
 import RandomDatasetPage from "./RandomDatasetGenerator";
 
-export default function Help() {
+export default function RDG() {
   // Disable scroll while this page is mounted
   useEffect(() => {
     const originalStyle = window.getComputedStyle(document.body).overflow;
@@ -15,12 +15,12 @@ export default function Help() {
   return (
     <div
       style={{
-        height: "100vh", // full viewport height
-        width: "100vw",  // full viewport width
+        height: "100vh", 
+        width: "100vw",  
         display: "flex",
         justifyContent: "center",
         alignItems: "center",
-        background: "#f5f5f5",
+        background: "linear-gradient(135deg, #74ABE2, #5563DE)",
       }}
     >
       {/* Card */}
@@ -34,7 +34,7 @@ export default function Help() {
         }}
       >
         <h1 style={{ textAlign: "center", marginBottom: "20px" }}>
-          Help - Random Dataset Generator
+          RDG - Random Dataset Generator
         </h1>
 
         <RandomDatasetPage />

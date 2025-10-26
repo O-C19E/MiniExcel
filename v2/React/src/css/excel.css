@@ -18,6 +18,8 @@ body { background-color: rgb(219, 56, 99); }
   font-weight: bold;
   display: flex;
   align-items: center;
+  user-select: none;    /* Prevent text selection */
+  cursor: default;
   justify-content: center; /* center the header text horizontally */
   overflow: hidden;
   text-overflow: ellipsis;
@@ -41,6 +43,9 @@ body { background-color: rgb(219, 56, 99); }
   white-space: nowrap;
 }
 
-
-/* accessibility focus */
 .cell:focus { outline: 2px solid #6ab0ff; }
+
+.cell-highlight-green {
+  background-color: green;
+  color: white;
+}

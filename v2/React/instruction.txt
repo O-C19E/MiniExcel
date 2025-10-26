@@ -1,0 +1,1 @@
+Use "npm i @e965/xlsx" to install to install XLSX

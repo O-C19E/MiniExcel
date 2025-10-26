@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import axios from "axios";
 import "../css/RandomDatasetGenerator.css";
 
@@ -21,7 +21,7 @@ export default function RandomDatasetGenerator() {
       formData.append("file", file);
       formData.append("rows", rows);
 
-      const response = await axios.post("/generate-random", formData, {
+      const response = await axios.post("http://localhost:5000/generate-random", formData, {
         responseType: "blob",
       });
 
